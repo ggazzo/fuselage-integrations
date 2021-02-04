@@ -14,7 +14,7 @@ export class FuselageIntegrationsApp extends App {
     }
     protected async extendConfiguration(configuration: IConfigurationExtend): Promise<void> {
         await configuration.api.provideApi({
-            visibility: ApiVisibility.PRIVATE,
+            visibility: ApiVisibility.PUBLIC,
             security: ApiSecurity.UNSECURE,
             endpoints: [
                 new WebHook(this),

@@ -1,7 +1,8 @@
 {
-    "url": "http://localhost:3000",
-    "username": "",
-    "password": "",
+    "url": "https://open.rocket.chat",
+    "username": "guilherme.gazzo",
+    "password": "Nf2IBb9dMGRlBztMqTW-CwWhMhANwuAbJW7DPYUJi0O",
+    "code":"136646",
     "ignoredFiles": [
         "**/README.md",
         "**/package-lock.json",

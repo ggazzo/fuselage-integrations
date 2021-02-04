@@ -17,12 +17,17 @@ type User = {
 }
 
 type PullRequest =  {
+    id: number;
     html_url: string;
     url: string;
     title: string;
     body: string;
     user: User;
     number: number;
+    requested_teams: {
+        name: string;
+        slug: string;
+    } []
 }
 
 
@@ -68,15 +73,15 @@ export class WebHook extends ApiEndpoint {
             return this.success({ ok: true });
         }
 
+        const userApp = await read.getUserReader().getAppUser(this.app.getID());
+
         const makeBlocks = (reviews: Reviews[], pr: PullRequest) => {
             const blockBuilder = modify.getCreator().getBlockBuilder();
 
             blockBuilder.addSectionBlock({
                 text: {
                     type: TextObjectType.MARKDOWN,
-                    text: `*${ pr.title }* [#${pr.number}](${pr.url })
-                    ${ pr.body }
-                    `
+                    text: `*${ pr.title }* [#${pr.number}](${ pr.html_url })`
                 },
                 accessory: {
                     type: BlockElementType.IMAGE,
@@ -120,44 +125,56 @@ export class WebHook extends ApiEndpoint {
         }
 
 
+
         const fetchAndPersist = async (pull_request: PullRequest) => {
-            const userApp = await read.getUserReader().getAppUser(this.app.getID());
 
-                    if(!userApp) {
-                        return;
+            try {
+
+                if(!userApp) {
+                    return;
+                }
+
+
+                const association = new RocketChatAssociationRecord(RocketChatAssociationModel.MISC, pull_request.id.toString());
+                const [pr] = await read.getPersistenceReader().readByAssociation(association) as Array<PullRequestRelation>;
+                if(!pr && !pull_request.requested_teams.find(({ name }) => name === 'Frontend')) {
+                    return;
+                }
+                const message = pr?.mid ? await (await modify.getUpdater().message(pr.mid, userApp)).setEditor(userApp) : await modify.getCreator().startMessage().setUsernameAlias('Fudelage')
+                .setEmojiAvatar(':illuminati:').setRoom(room);
+                const finisher = pr?.mid ? modify.getUpdater() : modify.getCreator();
+
+                const request = await (await http.get(`${pull_request.url}/reviews`, {
+                    headers: {
+                        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_1_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36'
                     }
-                    const association = new RocketChatAssociationRecord(RocketChatAssociationModel.MISC, pull_request.number.toString());
-                    const [pr] = await read.getPersistenceReader().readByAssociation(association) as Array<PullRequestRelation>;
-                    const message = pr?.mid ? await (await modify.getUpdater().message(pr.mid, userApp)).setEditor(userApp) : await modify.getCreator().startMessage().setUsernameAlias('Fudelage')
-                    .setEmojiAvatar(':fredgazzo:').setRoom(room);
-                    const finisher = pr?.mid ? modify.getUpdater() : modify.getCreator();
-
-                    const request = await (await http.get(`${pull_request.url}/reviews`, {
-                        headers: {
-                            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_1_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36'
-                        }
-                    }));
+                }));
 
 
-                    const reviews: Reviews[] = request.data;
-                    this.app.getLogger().log(reviews);
+                const reviews: Reviews[] = request.data;
 
-                    const blockBuilder = makeBlocks(reviews, pull_request);
+                const blockBuilder = makeBlocks(reviews, pull_request);
 
-                    message.setBlocks(blockBuilder);
+                message.setBlocks(blockBuilder);
 
-                    const mid = await finisher.finish(message);
+                const mid = await finisher.finish(message);
 
-                    if(!pr) {
-                        await persis.createWithAssociation({ mid }, association);
-                    }
+                if(!pr) {
+                    await persis.createWithAssociation({ mid }, association);
+                }
+            } catch (error) {
+                this.app.getLogger().error(error);
+            }
         }
 
         const handlePullRequest = async (): Promise<IApiResponse> => {
             const { action , pull_request }: GithubActionPullRequest = JSON.parse(request.content.payload);
 
             switch(action) {
+                case 'review_requested':
                 case 'opened':
+                case 'edited':
+                    this.app.getLogger().log('here');
                     await fetchAndPersist(pull_request);
                 break;
             }
@@ -178,13 +195,13 @@ export class WebHook extends ApiEndpoint {
             return this.success({ ok: true });
         }
 
+        this.app.getLogger().log(request);
         if (request.headers['x-github-event'] === EVENT_TYPES.PULL_REQUEST) {
             return handlePullRequest();
         }
         if (request.headers['x-github-event'] === EVENT_TYPES.PULL_REQUEST_REVIEW) {
             return handlePullRequestReview();
         }
-        this.app.getLogger().log(request);
         return this.success({ ok: true });
     }
 }
