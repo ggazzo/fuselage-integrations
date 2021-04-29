@@ -78,7 +78,7 @@ export class WebHook extends ApiEndpoint {
             blockBuilder.addSectionBlock({
                 text: {
                     type: TextObjectType.MARKDOWN,
-                    text: `*${ pr.title }* [#${pr.number}](${ pr.html_url })`,
+                    text: `*${ pr.title.trim() }* [#${pr.number}](${ pr.html_url })`,
                 },
                 accessory: {
                     type: BlockElementType.IMAGE,
